@@ -8,6 +8,7 @@ extern const char* const program_version;
 typedef struct {
     char * region, *bam, *out;
     int size;
+    const int *pal;
 } arguments_t;
 
 arguments_t parse_options(int argc, char **argv);
