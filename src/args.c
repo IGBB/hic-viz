@@ -28,7 +28,6 @@ arguments_t parse_options(int argc, char **argv) {
   ketopt_t opt = KETOPT_INIT;
 
   int  c;
-  FILE* tmp;
   while ((c = ketopt(&opt, argc, argv, 1, "r:s:", longopts)) >= 0) {
     switch(c){
       case 'o': arguments.out     = opt.arg;       break;
