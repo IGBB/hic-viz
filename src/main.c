@@ -151,11 +151,13 @@ int main(int argc, char *argv[]) {
             gdImageLine( img, bin, 0, bin, args.size, line_color );
             gdImageLine( img, 0, bin, args.size, bin, line_color );
 
-            gdImageString(img, font, args.size, (bin+last)/2,
-                          sam_hdr_tid2name(header, i), line_color);
+            unsigned char * name = sam_hdr_tid2name(header, i);
 
-            gdImageStringUp(img, font, (bin+last)/2, args.size,
-                          sam_hdr_tid2name(header, i), line_color);
+            gdImageString(img, font, args.size, (bin+last)/2,
+                          name, line_color);
+
+            gdImageStringUp(img, font, (bin+last)/2, args.size + (strlen(name) * 7),
+                          name, line_color);
 
 
             last = bin;
