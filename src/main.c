@@ -49,27 +49,10 @@ int main(int argc, char *argv[]) {
         size_t len= 0;
         char buffer[2048];
 
-        /* Try to make strtok safe'ish*/
-        buffer[2047] = '\0';
-
         /* Read file, appending to the current buffer */
-        while((len = fread(&(buffer[len]), 1, 2047-len, fh)) > 0) {
-            /* loop through each name */
-            char *tok = strtok(buffer, "\n \t");
-            while(tok != NULL){
-                /* look ahead, if null then copy tok to begining of buffer, else
-                 * get tid from name and mark keep */
-                char * new = strtok(NULL, "\n \t");
-                if(new != NULL){
-                    int tid = bam_name2id(header, tok);
-                    keep[tid]=1;
-                }else{
-                    strcpy(buffer, tok);
-                    len = strlen(buffer);
-                }
-                tok = new;
-            }
-
+        while(fscanf(fh, "%2047s", buffer) == 1 ) {
+            int tid = bam_name2id(header, buffer);
+            keep[tid]=1;
         }
     }else{
         for(i = 0; i < header->n_targets; i++)
@@ -87,12 +70,48 @@ int main(int argc, char *argv[]) {
             offset[i] = total;
             total += header->target_len[i];
 
-            int len = strlen(sam_hdr_tid2name(header, i));
-            if(len > plot_pad) plot_pad = len;
+            int brect[8];
+            gdImageStringFT(tmp, brect, tmpcolor,
+                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                            24, 0, 0, 0,
+                          sam_hdr_tid2name(header, i));
+
+            /* test x */
+            int min, max, j;
+            min = max = brect[0];
+
+            for(j = 2; j < 8; j+=2){
+                if(min > brect[j])
+                    min = brect[j];
+                if(max < brect[j])
+                    max = brect[j];
+            }
+
+            int len = max - min;
+            if(plot_pad < len)
+                plot_pad = len;
+
+            /* test y */
+            min = max = brect[1];
+
+            for(j = 3; j < 8; j+=2){
+                if(min > brect[j])
+                    min = brect[j];
+                if(max < brect[j])
+                    max = brect[j];
+            }
+
+            len = max - min;
+            if(plot_pad < len)
+                plot_pad = len;
+
 
         }
     }
-    plot_pad = plot_pad * 7 + 10 ;
+    gdImageDestroy(tmp);
+
+    /* pad with 10px */
+    plot_pad += 10 ;
 
     int bin_size = (total/args.size) + 1;
 
@@ -144,14 +163,15 @@ int main(int argc, char *argv[]) {
 //        printf("%d%c", 255*counts[i]/max, " \n"[((i+1)%args.size) == 0]);
     }
 
+
     int line_color = gdImageColorClosest(img, 128,128,128);
-    int last = 0;
     gdFontPtr font = gdFontGetMediumBold();
     for( i = 0; i < header->n_targets; i++ ){
         if(keep[i]){
             int bin = offset[i]/bin_size;
+            int next = (offset[i] + header->target_len[i])/bin_size;
 
-            if(bin - last <= 0) continue;
+            if(next - bin <= 0) continue;
 
             gdImageLine( img, bin, 0, bin, args.size, line_color );
             gdImageLine( img, 0, bin, args.size, bin, line_color );
@@ -161,21 +181,27 @@ int main(int argc, char *argv[]) {
             int brect[8];
             gdImageStringFT(img, brect, line_color,
                             "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                            24, -0.785, args.size+5, (bin+last)/2,
+                            24,0 , args.size+5, (bin+next)/2,
                           name);
             gdImageStringFT(img, brect, line_color,
                             "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                            24, -0.785, (bin+last)/2, args.size+5,
+                            24, -1.57, (bin+next)/2, args.size+5,
                           name);
 
-            last = bin;
         }
     }
 
-    FILE* pngout = fopen(args.out, "wb");
-    gdImagePng(img, pngout);
-    fclose(pngout);
+    FILE* out = fopen(args.out, "wb");
 
+    switch(args.type){
+        case png:  gdImagePng(img, out);     break;
+        case jpeg: gdImageJpeg(img, out, 95); break;
+        case tiff: gdImageTiff(img, out);    break;
+        case bmp:  gdImageBmp(img, out, 0);  break;
+    }
+    fclose(out);
+
+    gdImageDestroy(img);
     /* printf("Total length: %ld\n", total); */
     /* printf("Size of bins: %ld\n", bin_size); */
     /* printf("   Max count: %d\n" , max); */

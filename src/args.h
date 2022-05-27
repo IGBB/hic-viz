@@ -5,9 +5,14 @@
 
 extern const char* const program_version;
 
+typedef enum {
+    png, bmp, jpeg, tiff
+} outtype_t;
+
 typedef struct {
     char * region, *bam, *out;
     int size;
+    outtype_t type;
     const int *pal;
 } arguments_t;
 

@@ -23,16 +23,17 @@ make
 
 **** Usage
 #+begin_example
+Usage: hic-viz [OPTION...] <BAM>
 hic-viz -- Simple hi-c contact plotting
 
-  -o, --out FILE         Filename to output png (default: stdout)
+  -o, --out FILE         Output file (default: stdout)
+  -t, --type TYPE        Image format [png,jpeg,tiff,bmp] (default: png)
   -r, --region FILE      List of sequences to include (default: all)
                          Can be space, tab, or newline delimited
   -s, --plot-size INT    Size of contact map in pixels (default: 3000)
                          Actual plot will be larger due to sequence names
   -p, --palette PALETTE  Palette of contact map (default: rocket)
-                         Valid options are magma, inferno, mako, or rocket
-                                     Valid options are phred64, 64, phred33, and 33.
-  -h, --help                      Give this help list
+                         Valid options are magma, inferno, mako, rocket, or grey
+  -h, --help             Give this help list
 Report bugs to github.com/IGBB/hic-viz.
 #+end_example
