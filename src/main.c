@@ -76,13 +76,23 @@ int main(int argc, char *argv[]) {
             keep[i]=1;
     }
 
+
+    gdImagePtr tmp = gdImageCreate(300, 100);
+    int tmpcolor = gdImageColorAllocate(tmp, 128,128,128);
+
+    int plot_pad = 0;
     int *offset = calloc(header->n_targets, sizeof(int));
     for(i = 0; i < header->n_targets; i++){
         if(keep[i]){
             offset[i] = total;
             total += header->target_len[i];
+
+            int len = strlen(sam_hdr_tid2name(header, i));
+            if(len > plot_pad) plot_pad = len;
+
         }
     }
+    plot_pad = plot_pad * 7 + 10 ;
 
     int bin_size = (total/args.size) + 1;
 
@@ -120,12 +130,7 @@ int main(int argc, char *argv[]) {
     max = tot/num;
     printf("Mean = %d\n", max);
 
-    gdImagePtr img = gdImageCreate(args.size+250, args.size+250);
-
-
-
-
-
+    gdImagePtr img = gdImageCreate(args.size+plot_pad, args.size+plot_pad);
     int * colors = load_palette(img, args.pal);
 
     for( i = 0; i < args.size*args.size; i++ ){
@@ -153,12 +158,15 @@ int main(int argc, char *argv[]) {
 
             unsigned char * name = sam_hdr_tid2name(header, i);
 
-            gdImageString(img, font, args.size, (bin+last)/2,
-                          name, line_color);
-
-            gdImageStringUp(img, font, (bin+last)/2, args.size + (strlen(name) * 7),
-                          name, line_color);
-
+            int brect[8];
+            gdImageStringFT(img, brect, line_color,
+                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                            24, -0.785, args.size+5, (bin+last)/2,
+                          name);
+            gdImageStringFT(img, brect, line_color,
+                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                            24, -0.785, (bin+last)/2, args.size+5,
+                          name);
 
             last = bin;
         }
