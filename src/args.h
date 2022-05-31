@@ -10,7 +10,7 @@ typedef enum {
 } outtype_t;
 
 typedef struct {
-    char * region, *bam, *out;
+    char * region, *bam, *out, *font;
     int size;
     outtype_t type;
     const int *pal;

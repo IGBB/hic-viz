@@ -26,6 +26,7 @@ static ko_longopt_t longopts[] = {
     { "plot-size", ko_required_argument, 's' },
     { "out", ko_required_argument, 'o' },
     { "type", ko_required_argument, 't' },
+    { "font", ko_required_argument, 'f' },
     { "palette", ko_required_argument, 'p' },
     { "help", ko_no_argument, 'h' },
 
@@ -39,6 +40,7 @@ arguments_t parse_options(int argc, char **argv) {
                                 .size  = 3000,
                                 .bam = NULL,
                                 .out = "/dev/stdout",
+                                .font= "/usr/share/fonts/dejavu/DejaVuSans.ttf",
                                 .pal = rocket
   };
 
@@ -46,10 +48,11 @@ arguments_t parse_options(int argc, char **argv) {
   ketopt_t opt = KETOPT_INIT;
 
   int  c;
-  while ((c = ketopt(&opt, argc, argv, 1, "r:s:o:p:t:h", longopts)) >= 0) {
+  while ((c = ketopt(&opt, argc, argv, 1, "r:s:f:o:p:t:h", longopts)) >= 0) {
     switch(c){
       case 'o': arguments.out     = opt.arg;       break;
       case 'r': arguments.region  = opt.arg;       break;
+      case 'f': arguments.font    = opt.arg;       break;
       case 's': arguments.size    = atoi(opt.arg); break;
       case 't':
         if(strcmp(opt.arg, "png") == 0)

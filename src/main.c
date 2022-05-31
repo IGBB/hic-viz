@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
 
             int brect[8];
             gdImageStringFT(tmp, brect, tmpcolor,
-                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                            args.font,
                             24, 0, 0, 0,
                           sam_hdr_tid2name(header, i));
 
@@ -179,12 +179,10 @@ int main(int argc, char *argv[]) {
             unsigned char * name = sam_hdr_tid2name(header, i);
 
             int brect[8];
-            gdImageStringFT(img, brect, line_color,
-                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            gdImageStringFT(img, brect, line_color, args.font,
                             24,0 , args.size+5, (bin+next)/2,
                           name);
-            gdImageStringFT(img, brect, line_color,
-                            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            gdImageStringFT(img, brect, line_color, args.font,
                             24, -1.57, (bin+next)/2, args.size+5,
                           name);
 
