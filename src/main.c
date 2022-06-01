@@ -3,7 +3,6 @@
 
 #include "htslib/htslib/sam.h"
 #include "gd.h"
-#include "gdfontmb.h"
 
 #include "args.h"
 #include "palette.h"
@@ -17,67 +16,52 @@ int get_bin(int offset[], int bin_size, int tid, int pos){
 
     return bin;
 }
+htsFile* htsOpen(char* filename){
+    htsFile* file = hts_open(filename, "r");
 
-int main(int argc, char *argv[]) {
-
-    arguments_t args = parse_options(argc, argv);
-
-    int i;
-
-    htsFile* file;
-    bam_hdr_t *header;
-
-
-    file = hts_open(args.bam, "r");
+    /* Did file open */
     if(!file){
         fprintf(stderr, "Failed to open bam file '%s': %s\n",
-                  args.bam, strerror(errno));
+                  filename, strerror(errno));
         exit(EXIT_FAILURE);
     }
+
+    /* Is file a bam */
     if(file->format.format != bam){
         fprintf(stderr, "File supplied is not in bam format. Current Format: %s",
                   hts_format_description(hts_get_format(file)));
         exit(EXIT_FAILURE);
     }
-    header = sam_hdr_read(file);
 
-    long total = 0;
-    int *keep = calloc(header->n_targets, sizeof(int));
+    return file;
+}
 
-    if( args.region ){
-        FILE* fh = fopen(args.region, "r");
-        size_t len= 0;
-        char buffer[2048];
+void read_filter_file(bam_hdr_t * header, int keep[], char* file){
+    FILE* fh = fopen(file, "r");
+    char buffer[2048];
 
-        /* Read file, appending to the current buffer */
-        while(fscanf(fh, "%2047s", buffer) == 1 ) {
-            int tid = bam_name2id(header, buffer);
-            keep[tid]=1;
-        }
-    }else{
-        for(i = 0; i < header->n_targets; i++)
-            keep[i]=1;
+    /* Read file, appending to the current buffer */
+    while(fscanf(fh, "%2047s", buffer) == 1 ) {
+        int tid = bam_name2id(header, buffer);
+        keep[tid]=1;
     }
+}
 
-
+int get_padding(bam_hdr_t *header, int keep [], char* font){
+    int padding = 0 ;
+    int i, j, min, max, len, brect[8];
     gdImagePtr tmp = gdImageCreate(300, 100);
     int tmpcolor = gdImageColorAllocate(tmp, 128,128,128);
 
-    int plot_pad = 0;
-    int *offset = calloc(header->n_targets, sizeof(int));
     for(i = 0; i < header->n_targets; i++){
         if(keep[i]){
-            offset[i] = total;
-            total += header->target_len[i];
 
-            int brect[8];
             gdImageStringFT(tmp, brect, tmpcolor,
-                            args.font,
+                            font,
                             24, 0, 0, 0,
                           sam_hdr_tid2name(header, i));
 
             /* test x */
-            int min, max, j;
             min = max = brect[0];
 
             for(j = 2; j < 8; j+=2){
@@ -87,9 +71,9 @@ int main(int argc, char *argv[]) {
                     max = brect[j];
             }
 
-            int len = max - min;
-            if(plot_pad < len)
-                plot_pad = len;
+            len = max - min;
+            if(padding < len)
+                padding = len;
 
             /* test y */
             min = max = brect[1];
@@ -102,17 +86,54 @@ int main(int argc, char *argv[]) {
             }
 
             len = max - min;
-            if(plot_pad < len)
-                plot_pad = len;
+            if(padding < len)
+                padding = len;
 
 
         }
     }
     gdImageDestroy(tmp);
 
-    /* pad with 10px */
-    plot_pad += 10 ;
 
+    return padding + 10;
+}
+
+long * get_offsets (bam_hdr_t *header, int keep []){
+    long * offsets = malloc((header->n_targets + 1 ) * sizeof(long));
+    long total = 0;
+    int i;
+
+    for(i = 0; i < header->n_targets; i++){
+        offsets[i] = total;
+        if(keep[i]) total+=header->target_len[i];
+    }
+
+    offsets[i] = total;
+    return offsets;
+}
+
+int main(int argc, char *argv[]) {
+
+    arguments_t args = parse_options(argc, argv);
+
+    int i;
+
+    htsFile* file = htsOpen(args.bam);
+    bam_hdr_t *header = sam_hdr_read(file);
+
+    int *keep = calloc(header->n_targets, sizeof(int));
+
+    if( args.region ){
+        read_filter_file(header, keep, args.region);
+    }else{
+        for(i = 0; i < header->n_targets; i++)
+            keep[i]=1;
+    }
+
+    int padding =  get_padding(header, keep, args.font);
+
+    long * offset = get_offsets(header, keep);
+    long total = offset[header->n_targets];
     int bin_size = (total/args.size) + 1;
 
     int * counts = calloc(args.size*args.size, sizeof(int));
@@ -149,7 +170,7 @@ int main(int argc, char *argv[]) {
     max = tot/num;
     printf("Mean = %d\n", max);
 
-    gdImagePtr img = gdImageCreate(args.size+plot_pad, args.size+plot_pad);
+    gdImagePtr img = gdImageCreate(args.size+padding, args.size+padding);
     int * colors = load_palette(img, args.pal);
 
     for( i = 0; i < args.size*args.size; i++ ){
@@ -160,12 +181,11 @@ int main(int argc, char *argv[]) {
         gdImageSetPixel(img, i/args.size, i%args.size, color);
 
 
-//        printf("%d%c", 255*counts[i]/max, " \n"[((i+1)%args.size) == 0]);
+        printf("%d%c", 255*counts[i]/max, " \n"[((i+1)%args.size) == 0]);
     }
 
 
     int line_color = gdImageColorClosest(img, 128,128,128);
-    gdFontPtr font = gdFontGetMediumBold();
     for( i = 0; i < header->n_targets; i++ ){
         if(keep[i]){
             int bin = offset[i]/bin_size;
@@ -176,7 +196,7 @@ int main(int argc, char *argv[]) {
             gdImageLine( img, bin, 0, bin, args.size, line_color );
             gdImageLine( img, 0, bin, args.size, bin, line_color );
 
-            unsigned char * name = sam_hdr_tid2name(header, i);
+            const char * name = sam_hdr_tid2name(header, i);
 
             int brect[8];
             gdImageStringFT(img, brect, line_color, args.font,
