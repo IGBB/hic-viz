@@ -9,8 +9,7 @@
 
 #+begin_src sh
 
-git submodule init
-git submodule update
+git submodule update --init --recursive
 
 pushd src/htslib/
 autoheader && autoconf
