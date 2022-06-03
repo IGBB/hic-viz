@@ -6,7 +6,7 @@ CFLAGS  += -Wall -std=c99
 LDFLAGS += -Lsrc/htslib/ -lhts -lgd -lpng -lfreetype -lm -std=c99
 
 # Dynamic libs to include for static htslib
-LDFLAGS += -pthread -lcrypto -lcurl -lbz2 -lz
+LDFLAGS += -pthread -lcrypto -lcurl -lbz2 -lz -llzma
 
 # Optimizations
 CFLAGS  += -O3 -fgnu89-inline -std=c99 -march=native -mtune=native
