@@ -140,58 +140,58 @@ int main(int argc, char *argv[]) {
 
     bam1_t * read = bam_init1();
     while(sam_read1(file, header, read) >= 0) {
-        if(keep[read->core.tid] && keep[read->core.mtid]){
 
-            long x, y;
-            x = offset[read->core.tid] + read->core.pos;
-            y = offset[read->core.mtid] + read->core.mpos;
+        long x, y;
+        x = offset[read->core.tid] + read->core.pos;
+        y = offset[read->core.mtid] + read->core.mpos;
 
-            int bin_x, bin_y;
-            bin_x = x/bin_size;
-            bin_y = y/bin_size;
+        int bin_x, bin_y;
+        bin_x = x/bin_size;
+        bin_y = y/bin_size;
+
+        if(keep[read->core.tid] && keep[read->core.mtid])
             counts[bin_x*args.size + bin_y] ++;
-        }
+
     }
 
     /* for( i = 0; i < args.size*args.size; i++ ) */
     /*     printf("%d%c", counts[i], " \n"[((i+1)%args.size) == 0]); */
 
-    int max = 0, num=0;
+    /* Get number and total counts of entries greater than 1 */
+    int num=0;
     long tot = 0;
     for( i = 0; i < args.size*args.size; i++ ){
         if(counts[i] > 1){
             num++;
             tot += counts[i];
         }
-        if(max < counts[i]) max = counts[i];
     }
 
-    printf("Max = %d\n", max);
-    max = tot/num;
-    printf("Mean = %d\n", max);
+    /* Adjust max color to twice the average of entries > 1 */
+    int max = 2*tot/num;
 
+    /* Create image and palette */
     gdImagePtr img = gdImageCreate(args.size+padding, args.size+padding);
     int * colors = load_palette(img, args.pal);
 
+    /* Draw contact map */
     for( i = 0; i < args.size*args.size; i++ ){
         int color = 255*counts[i]/max;
         if(color > 255) color=255;
         color=colors[color];
 
         gdImageSetPixel(img, i/args.size, i%args.size, color);
-
-
-        printf("%d%c", 255*counts[i]/max, " \n"[((i+1)%args.size) == 0]);
     }
 
 
+    /* Draw lines and labels, skipping if too close (10px) */
     int line_color = gdImageColorClosest(img, 128,128,128);
     for( i = 0; i < header->n_targets; i++ ){
         if(keep[i]){
             int bin = offset[i]/bin_size;
             int next = (offset[i] + header->target_len[i])/bin_size;
 
-            if(next - bin <= 0) continue;
+            if(next - bin <= 10) continue;
 
             gdImageLine( img, bin, 0, bin, args.size, line_color );
             gdImageLine( img, 0, bin, args.size, bin, line_color );
@@ -209,8 +209,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    /* Write image */
     FILE* out = fopen(args.out, "wb");
-
     switch(args.type){
         case png:  gdImagePng(img, out);     break;
         case jpeg: gdImageJpeg(img, out, 95); break;
@@ -220,8 +220,5 @@ int main(int argc, char *argv[]) {
     fclose(out);
 
     gdImageDestroy(img);
-    /* printf("Total length: %ld\n", total); */
-    /* printf("Size of bins: %ld\n", bin_size); */
-    /* printf("   Max count: %d\n" , max); */
     return 0;
 }
