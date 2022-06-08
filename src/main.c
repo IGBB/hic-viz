@@ -36,25 +36,47 @@ htsFile* htsOpen(char* filename){
     return file;
 }
 
-void read_filter_file(bam_hdr_t * header, int keep[], char* file){
+
+/* order array is an n_target length array. Each element represents the order to
+ * display sequences, starting at 1. 0 means skip sequence */
+int* set_order(bam_hdr_t * header, char* file){
     FILE* fh = fopen(file, "r");
     char buffer[2048];
+    int i, c;
 
-    /* Read file, appending to the current buffer */
-    while(fscanf(fh, "%2047s", buffer) == 1 ) {
-        int tid = bam_name2id(header, buffer);
-        keep[tid]=1;
+    int * order = malloc(header->n_targets * sizeof(int));
+
+    if(file){
+
+        for(i = 0; i < header->n_targets; i++)
+            order[i] = 0;
+
+        c = 1;
+        /* Read next target */
+        while(fscanf(fh, "%2047s", buffer) == 1 ) {
+            /* find target id */
+            int tid = bam_name2id(header, buffer);
+            /* set order */
+            order[tid]=c++;
+        }
+    }else{
+        /* Set order to match bam header */
+        for(i = 0; i < header->n_targets; i++)
+            order[i] = i+1;
     }
+
+    return order;
 }
 
-int get_padding(bam_hdr_t *header, int keep [], char* font){
+/* Get the padding needed to fit the largest sequence name in the plot */
+int get_padding(bam_hdr_t *header, int order [], char* font){
     int padding = 0 ;
     int i, j, min, max, len, brect[8];
     gdImagePtr tmp = gdImageCreate(300, 100);
     int tmpcolor = gdImageColorAllocate(tmp, 128,128,128);
 
     for(i = 0; i < header->n_targets; i++){
-        if(keep[i]){
+        if(order[i]){
 
             gdImageStringFT(tmp, brect, tmpcolor,
                             font,
@@ -98,17 +120,19 @@ int get_padding(bam_hdr_t *header, int keep [], char* font){
     return padding + 10;
 }
 
-long * get_offsets (bam_hdr_t *header, int keep []){
+/* offset array is a n_target+1 array. Each element is the start of the sequence
+ * in the concatendated plot */
+long * get_offsets (bam_hdr_t *header, int order []){
     long * offsets = malloc((header->n_targets + 1 ) * sizeof(long));
     long total = 0;
     int i;
 
     for(i = 0; i < header->n_targets; i++){
-        offsets[i] = total;
-        if(keep[i]) total+=header->target_len[i];
+        offsets[order[i]] = total;
+        if(order[i]) total+=header->target_len[i];
     }
 
-    offsets[i] = total;
+    offsets[0] = total;
     return offsets;
 }
 
@@ -121,19 +145,11 @@ int main(int argc, char *argv[]) {
     htsFile* file = htsOpen(args.bam);
     bam_hdr_t *header = sam_hdr_read(file);
 
-    int *keep = calloc(header->n_targets, sizeof(int));
+    int *order = set_order(header, args.region);
+    int padding =  get_padding(header, order, args.font);
 
-    if( args.region ){
-        read_filter_file(header, keep, args.region);
-    }else{
-        for(i = 0; i < header->n_targets; i++)
-            keep[i]=1;
-    }
-
-    int padding =  get_padding(header, keep, args.font);
-
-    long * offset = get_offsets(header, keep);
-    long total = offset[header->n_targets];
+    long * offset = get_offsets(header, order);
+    long total = offset[0];
     int bin_size = (total/args.size) + 1;
 
     int * counts = calloc(args.size*args.size, sizeof(int));
@@ -142,20 +158,20 @@ int main(int argc, char *argv[]) {
     while(sam_read1(file, header, read) >= 0) {
 
         long x, y;
-        x = offset[read->core.tid] + read->core.pos;
-        y = offset[read->core.mtid] + read->core.mpos;
+        x = offset[order[read->core.tid]] + read->core.pos;
+        y = offset[order[read->core.mtid]] + read->core.mpos;
 
         int bin_x, bin_y;
         bin_x = x/bin_size;
         bin_y = y/bin_size;
 
-        if(keep[read->core.tid] && keep[read->core.mtid])
+        if(order[read->core.tid] && order[read->core.mtid])
             counts[bin_x*args.size + bin_y] ++;
 
     }
 
     /* for( i = 0; i < args.size*args.size; i++ ) */
-    /*     printf("%d%c", counts[i], " \n"[((i+1)%args.size) == 0]); */
+    /*      printf("%d%c", counts[i], " \n"[((i+1)%args.size) == 0]); */
 
     /* Get number and total counts of entries greater than 1 */
     int num=0;
@@ -187,9 +203,9 @@ int main(int argc, char *argv[]) {
     /* Draw lines and labels, skipping if too close (10px) */
     int line_color = gdImageColorClosest(img, 128,128,128);
     for( i = 0; i < header->n_targets; i++ ){
-        if(keep[i]){
-            int bin = offset[i]/bin_size;
-            int next = (offset[i] + header->target_len[i])/bin_size;
+        if(order[i]){
+            int bin = offset[order[i]]/bin_size;
+            int next = (offset[order[i]] + header->target_len[i])/bin_size;
 
             if(next - bin <= 10) continue;
 
