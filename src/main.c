@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
 
     /* Draw contact map */
     for( i = 0; i < args.size*args.size; i++ ){
-        int color = 255*counts[i]/max;
+        int color = 255L*counts[i]/max;
         if(color > 255) color=255;
         color=colors[color];
 
