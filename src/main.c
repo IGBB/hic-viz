@@ -7,15 +7,6 @@
 #include "args.h"
 #include "palette.h"
 
-int get_bin(int offset[], int bin_size, int tid, int pos){
-    long off;
-    int bin;
-
-    off = offset[tid] + pos;
-    bin = off/bin_size;
-
-    return bin;
-}
 htsFile* htsOpen(char* filename){
     htsFile* file = hts_open(filename, "r");
 
@@ -37,82 +28,119 @@ htsFile* htsOpen(char* filename){
 }
 
 
-/* order array is an n_target length array. Each element represents the order to
- * display sequences, starting at 1. 0 means skip sequence */
-int* set_order(bam_hdr_t * header, char* file){
-    FILE* fh = fopen(file, "r");
-    char buffer[2048];
-    int i, c;
+/* region_t data struct
+ ** @field str - display string
+ ** @field tid - target id in the bam file
+ ** @field pos - region position (.beg and .end)
+ * */
+typedef struct REGION {
+    const char * str;
+    int tid, start_bin;
+    long remaining;
+    hts_pair_pos_t pos;
+    struct REGION *order, *page;
+} region_t ;
 
-    int * order = malloc(header->n_targets * sizeof(int));
+/* Parses file of samtools style regions to set order of visible sequences
+** @param header - full bam header
+**
+** @param file --- file containing samtools tyle regions (e.g. Chr1:100-1000,
+**                 Chr1:100-, Chr1), separated by whitespace, in disply order.
+**                 If a file in not given, or cannot be opened, all sequences
+**                 will be displayed in the order given in the header.
+**
+** @return ------- returns a pointer to reglist_t (kvec of regions), where .a is
+**                 the array of regions and .n is the number of regions in
+**                 array.
+ */
+region_t* get_reglist(bam_hdr_t * header, char* file){
+    region_t *reglist, *cur, *prev;
 
     if(file){
-
-        for(i = 0; i < header->n_targets; i++)
-            order[i] = 0;
-
-        c = 1;
+        FILE* fh = fopen(file, "r");
         /* Read next target */
+        reglist = malloc(sizeof(region_t));
+        prev = cur = reglist;
+        char * buffer = malloc(sizeof(char) * 2048);
+
         while(fscanf(fh, "%2047s", buffer) == 1 ) {
-            /* find target id */
-            int tid = bam_name2id(header, buffer);
-            /* set order */
-            order[tid]=c++;
+            cur->str = buffer;
+
+            if(sam_parse_region(header,
+                                cur->str,
+                                &(cur->tid),
+                                &(cur->pos.beg),
+                                &(cur->pos.end), 0) == NULL){
+                exit(EXIT_FAILURE);
+            }
+
+            if(cur->pos.end > sam_hdr_tid2len(header, cur->tid))
+                cur->pos.end = sam_hdr_tid2len(header, cur->tid);
+
+            cur->order = malloc(sizeof(region_t));
+            prev = cur;
+            cur = cur->order;
+            buffer = malloc(sizeof(char) * 2048);
         }
+        free(buffer);
+        free(cur);
+        prev->order = NULL;
     }else{
+
+        reglist = malloc(sizeof(region_t) * header->n_targets);
+
         /* Set order to match bam header */
-        for(i = 0; i < header->n_targets; i++)
-            order[i] = i+1;
+        int i;
+        for(i = 0; i < header->n_targets; i++){
+            reglist[i].str = sam_hdr_tid2name(header, i);
+            reglist[i].tid = i;
+            reglist[i].pos.beg = 0;
+            reglist[i].pos.end = sam_hdr_tid2len(header, i);
+            reglist[i].order = reglist + (i + 1);
+        }
+        reglist[header->n_targets-1].order = NULL;
     }
 
-    return order;
+    return reglist;
 }
 
-/* Get the padding needed to fit the largest sequence name in the plot */
-int get_padding(bam_hdr_t *header, int order [], char* font){
+/* Get the padding needed to fit the largest sequence name in the plot
+ ** @param reglist - pointer to region list (reglist_t).
+ ** @param font ---- FreeType font used
+ ** @return -------- size needed to pad the image to fit all text
+ */
+
+int get_padding(region_t* reglist, char* font){
+    region_t* cur  = reglist;
     int padding = 0 ;
     int i, j, min, max, len, brect[8];
+
+    /* Create tmp image and color */
     gdImagePtr tmp = gdImageCreate(300, 100);
     int tmpcolor = gdImageColorAllocate(tmp, 128,128,128);
 
-    for(i = 0; i < header->n_targets; i++){
-        if(order[i]){
+    /* loop through all sequences to get the max padding needed.
+     **
+     ** TODO: optmize by finding the longest string and only one bounding box
+     ** */
+    while(cur != NULL) {
+        gdImageStringFT(tmp, brect, tmpcolor,
+                        font, 24, 0, 0, 0, cur->str);
 
-            gdImageStringFT(tmp, brect, tmpcolor,
-                            font,
-                            24, 0, 0, 0,
-                          sam_hdr_tid2name(header, i));
+        /* test x then y */
+        for(i = 0; i <= 1; i++){
+            min = max = brect[i];
 
-            /* test x */
-            min = max = brect[0];
-
-            for(j = 2; j < 8; j+=2){
-                if(min > brect[j])
-                    min = brect[j];
-                if(max < brect[j])
-                    max = brect[j];
+            for(j = (i+2); j < 8; j+=2){
+                if(min > brect[j]) min = brect[j];
+                if(max < brect[j]) max = brect[j];
             }
 
             len = max - min;
-            if(padding < len)
-                padding = len;
-
-            /* test y */
-            min = max = brect[1];
-
-            for(j = 3; j < 8; j+=2){
-                if(min > brect[j])
-                    min = brect[j];
-                if(max < brect[j])
-                    max = brect[j];
-            }
-
-            len = max - min;
-            if(padding < len)
-                padding = len;
-
-
+            if(padding < len) padding = len;
         }
+
+        cur = cur->order;
     }
     gdImageDestroy(tmp);
 
@@ -120,20 +148,58 @@ int get_padding(bam_hdr_t *header, int order [], char* font){
     return padding + 10;
 }
 
-/* offset array is a n_target+1 array. Each element is the start of the sequence
- * in the concatendated plot */
-long * get_offsets (bam_hdr_t *header, int order []){
-    long * offsets = malloc((header->n_targets + 1 ) * sizeof(long));
-    long total = 0;
-    int i;
+/* Create array of linked pages */
+region_t ** create_pages(sam_hdr_t * head, region_t * reglist, int number_of_bins, long *bin_size) {
+    region_t* cur = reglist;
+    region_t ** pages = calloc(head->n_targets, sizeof(region_t*));
+    int bin;
+    long remaining;
 
-    for(i = 0; i < header->n_targets; i++){
-        offsets[order[i]] = total;
-        if(order[i]) total+=header->target_len[i];
+    *bin_size = 0;
+
+    /* Loop throu all ranges */
+    while(cur != NULL) {
+        /* get total number of bases need to visualize */
+        (*bin_size) += (cur->pos.end - cur->pos.beg);
+        cur = cur->order;
+    }
+    /* convert total number of bases to size of each bin in matrix */
+    (*bin_size) /= number_of_bins;
+
+     /* Loop throu all ranges again to assign starting bin */
+    bin = 0;
+    remaining = 0;
+    cur = reglist;
+    while(cur != NULL) {
+        cur->start_bin = bin;
+        cur->remaining = remaining;
+        cur->page = pages[cur->tid];
+        pages[cur->tid] = cur;
+
+        remaining += (cur->pos.end - cur->pos.beg);
+
+        bin += remaining/(*bin_size);
+        remaining %= (*bin_size);
+
+        cur = cur->order;
     }
 
-    offsets[0] = total;
-    return offsets;
+    return pages;
+};
+
+int pos2bin(region_t * page, int pos, long bin_size){
+    region_t * cur = page;
+    while(cur != NULL){
+        if(pos >= cur->pos.beg && pos < cur->pos.end){
+            int bin = cur->start_bin;
+            bin += ((cur->remaining + (pos - cur->pos.beg))/bin_size);
+            return bin;
+        }
+        cur = cur->page;
+    }
+
+    /* if no overlapping region is found, return -1 */
+    return -1;
 }
 
 int main(int argc, char *argv[]) {
@@ -141,33 +207,22 @@ int main(int argc, char *argv[]) {
     arguments_t args = parse_options(argc, argv);
 
     int i;
+    long bin_size;
 
     htsFile* file = htsOpen(args.bam);
     bam_hdr_t *header = sam_hdr_read(file);
 
-    int *order = set_order(header, args.region);
-    int padding =  get_padding(header, order, args.font);
-
-    long * offset = get_offsets(header, order);
-    long total = offset[0];
-    int bin_size = (total/args.size) + 1;
-
-    int * counts = calloc(args.size*args.size, sizeof(int));
+    region_t* reglist = get_reglist(header, args.region);
+    region_t** pages = create_pages(header, reglist, args.size, &bin_size);
+    int * counts = calloc((args.size+1)*(args.size+1), sizeof(int));
 
     bam1_t * read = bam_init1();
     while(sam_read1(file, header, read) >= 0) {
-
         long x, y;
-        x = offset[order[read->core.tid]] + read->core.pos;
-        y = offset[order[read->core.mtid]] + read->core.mpos;
+        x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
+        y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
 
-        int bin_x, bin_y;
-        bin_x = x/bin_size;
-        bin_y = y/bin_size;
-
-        if(order[read->core.tid] && order[read->core.mtid])
-            counts[bin_x*args.size + bin_y] ++;
-
+        if( x >= 0 && y >= 0) counts[x*args.size + y] ++;
     }
 
     /* for( i = 0; i < args.size*args.size; i++ ) */
@@ -186,6 +241,7 @@ int main(int argc, char *argv[]) {
     /* Adjust max color to twice the average of entries > 1 */
     int max = 2*tot/num;
 
+    int padding =  get_padding(reglist, args.font);
     /* Create image and palette */
     gdImagePtr img = gdImageCreate(args.size+padding, args.size+padding);
     int * colors = load_palette(img, args.pal);
@@ -202,27 +258,27 @@ int main(int argc, char *argv[]) {
 
     /* Draw lines and labels, skipping if too close (10px) */
     int line_color = gdImageColorClosest(img, 128,128,128);
-    for( i = 0; i < header->n_targets; i++ ){
-        if(order[i]){
-            int bin = offset[order[i]]/bin_size;
-            int next = (offset[order[i]] + header->target_len[i])/bin_size;
+    region_t* cur = reglist;
+    while(cur != NULL){
+        int beg = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
+        int end = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
 
-            if(next - bin <= 10) continue;
+            if(end - beg <= 10 ) goto NEXT;
 
-            gdImageLine( img, bin, 0, bin, args.size, line_color );
-            gdImageLine( img, 0, bin, args.size, bin, line_color );
+            gdImageLine( img, beg, 0, beg, args.size, line_color );
+            gdImageLine( img, 0, beg, args.size, beg, line_color );
 
-            const char * name = sam_hdr_tid2name(header, i);
+            const char * name = cur->str;
 
             int brect[8];
             gdImageStringFT(img, brect, line_color, args.font,
-                            24,0 , args.size+5, (bin+next)/2,
+                            24,0 , args.size+5, (beg+end)/2,
                           name);
             gdImageStringFT(img, brect, line_color, args.font,
-                            24, -1.57, (bin+next)/2, args.size+5,
+                            24, -1.57, (beg+end)/2, args.size+5,
                           name);
-
-        }
+NEXT:
+            cur = cur->order;
     }
 
     /* Write image */

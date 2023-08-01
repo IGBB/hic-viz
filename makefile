@@ -9,12 +9,16 @@ LDFLAGS += -Lsrc/htslib/ -lhts -lgd -lpng -lfreetype -lm -std=c99
 LDFLAGS += -pthread -lcrypto -lcurl -lbz2 -lz -llzma
 
 # Optimizations
-CFLAGS  += -O3 -fgnu89-inline -std=c99 -march=native -mtune=native
-LDFLAGS += -O3 -std=c99 -march=native -mtune=native
+# CFLAGS  += -O3 -fgnu89-inline -std=c99 -march=native -mtune=native
+# LDFLAGS += -O3 -std=c99 -march=native -mtune=native
+
+# Debug
+CFLAGS += -ggdb
+LDFLAGS += -ggdb
 
 hic-viz: $(obj)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 .PHONY: clean
 clean:
-	rm -f $(obj) polycat
+	rm -f $(obj) hic-viz
