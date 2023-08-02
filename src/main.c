@@ -71,6 +71,7 @@ region_t* get_reglist(bam_hdr_t * header, char* file){
                                 &(cur->tid),
                                 &(cur->pos.beg),
                                 &(cur->pos.end), 0) == NULL){
+                fprintf(stderr, "Can't parse region: '%s'\n", buffer);
                 exit(EXIT_FAILURE);
             }
 
