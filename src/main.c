@@ -35,7 +35,7 @@ htsFile* htsOpen(char* filename){
  * */
 typedef struct REGION {
     const char * str;
-    int tid, start_bin;
+    int tid, start_bin, dir;
     long remaining;
     hts_pair_pos_t pos;
     struct REGION *order, *page;
@@ -65,9 +65,16 @@ region_t* get_reglist(bam_hdr_t * header, char* file){
 
         while(fscanf(fh, "%2047s", buffer) == 1 ) {
             cur->str = buffer;
+            cur->dir=1;
+
+            // Reverse direction if region starts with '-'
+            if(buffer[0] == '-'){
+                cur->dir=-1;
+                buffer++;
+            }
 
             if(sam_parse_region(header,
-                                cur->str,
+                                buffer,
                                 &(cur->tid),
                                 &(cur->pos.beg),
                                 &(cur->pos.end), 0) == NULL){
@@ -95,6 +102,7 @@ region_t* get_reglist(bam_hdr_t * header, char* file){
         for(i = 0; i < header->n_targets; i++){
             reglist[i].str = sam_hdr_tid2name(header, i);
             reglist[i].tid = i;
+            reglist[i].dir = 1;
             reglist[i].pos.beg = 0;
             reglist[i].pos.end = sam_hdr_tid2len(header, i);
             reglist[i].order = reglist + (i + 1);
@@ -193,7 +201,11 @@ int pos2bin(region_t * page, int pos, long bin_size){
     while(cur != NULL){
         if(pos >= cur->pos.beg && pos < cur->pos.end){
             int bin = cur->start_bin;
-            bin += ((cur->remaining + (pos - cur->pos.beg))/bin_size);
+            if(cur->dir == 1 ){
+                 bin += ((cur->remaining + (pos - cur->pos.beg))/bin_size);
+            }else{
+                 bin += ((cur->remaining + (cur->pos.end - pos))/bin_size);
+            }
             return bin;
         }
         cur = cur->page;
@@ -261,25 +273,31 @@ int main(int argc, char *argv[]) {
     int line_color = gdImageColorClosest(img, 128,128,128);
     region_t* cur = reglist;
     while(cur != NULL){
-        int beg = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
-        int end = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
+        int beg, end;
+        if(cur->dir == 1){
+            beg = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
+            end = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
+        }else{
+            beg = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
+            end = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
+        }
 
-            if(end - beg <= 10 ) goto NEXT;
+        if(end - beg <= 10 ) goto NEXT;
 
-            gdImageLine( img, beg, 0, beg, args.size, line_color );
-            gdImageLine( img, 0, beg, args.size, beg, line_color );
+        gdImageLine( img, beg, 0, beg, args.size, line_color );
+        gdImageLine( img, 0, beg, args.size, beg, line_color );
 
-            const char * name = cur->str;
+        const char * name = cur->str;
 
-            int brect[8];
-            gdImageStringFT(img, brect, line_color, args.font,
-                            24,0 , args.size+5, (beg+end)/2,
-                          name);
-            gdImageStringFT(img, brect, line_color, args.font,
-                            24, -1.57, (beg+end)/2, args.size+5,
-                          name);
-NEXT:
-            cur = cur->order;
+        int brect[8];
+        gdImageStringFT(img, brect, line_color, args.font,
+                        24,0 , args.size+5, (beg+end)/2,
+                        name);
+        gdImageStringFT(img, brect, line_color, args.font,
+                        24, -1.57, (beg+end)/2, args.size+5,
+                        name);
+    NEXT:
+        cur = cur->order;
     }
 
     /* Write image */
