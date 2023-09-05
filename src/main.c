@@ -7,24 +7,27 @@
 #include "args.h"
 #include "palette.h"
 
-htsFile* htsOpen(char* filename){
-    htsFile* file = hts_open(filename, "r");
+htsFile* htsOpen(char* filename, hts_idx_t** index){
+  htsFile* file = hts_open(filename, "r");
 
-    /* Did file open */
-    if(!file){
-        fprintf(stderr, "Failed to open bam file '%s': %s\n",
-                  filename, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+  /* Did file open */
+  if(!file){
+    fprintf(stderr, "Failed to open bam file '%s': %s\n",
+            filename, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
 
-    /* Is file a bam */
-    if(file->format.format != bam){
-        fprintf(stderr, "File supplied is not in bam format. Current Format: %s",
-                  hts_format_description(hts_get_format(file)));
-        exit(EXIT_FAILURE);
-    }
+  /* Is file a bam */
+  if(file->format.format != bam){
+    fprintf(stderr, "File supplied is not in bam format. Current Format: %s",
+            hts_format_description(hts_get_format(file)));
+    exit(EXIT_FAILURE);
+  }
 
-    return file;
+  /* load index file if exists. else set to null */
+  *index = sam_index_load(file, filename);
+
+  return file;
 }
 
 
@@ -41,17 +44,18 @@ typedef struct REGION {
     struct REGION *order, *page;
 } region_t ;
 
-/* Parses file of samtools style regions to set order of visible sequences
-** @param header - full bam header
+/* Parses file of samtools style regions to set order of visible
+** sequences @param header - full bam header
 **
-** @param file --- file containing samtools tyle regions (e.g. Chr1:100-1000,
-**                 Chr1:100-, Chr1), separated by whitespace, in disply order.
-**                 If a file in not given, or cannot be opened, all sequences
-**                 will be displayed in the order given in the header.
+** @param file --- file containing samtools tyle regions
+**                 (e.g. Chr1:100-1000, Chr1:100-, Chr1), separated by
+**                 whitespace, in disply order.  If a file in not
+**                 given, or cannot be opened, all sequences will be
+**                 displayed in the order given in the header.
 **
-** @return ------- returns a pointer to reglist_t (kvec of regions), where .a is
-**                 the array of regions and .n is the number of regions in
-**                 array.
+** @return ------- returns a pointer to reglist_t (kvec of regions),
+**                 where .a is the array of regions and .n is the
+**                 number of regions in array.
  */
 region_t* get_reglist(bam_hdr_t * header, char* file){
     region_t *reglist, *cur, *prev;
@@ -222,7 +226,8 @@ int main(int argc, char *argv[]) {
     int i;
     long bin_size;
 
-    htsFile* file = htsOpen(args.bam);
+    hts_idx_t *index;
+    htsFile* file = htsOpen(args.bam, &index);
     bam_hdr_t *header = sam_hdr_read(file);
 
     region_t* reglist = get_reglist(header, args.region);
@@ -230,14 +235,44 @@ int main(int argc, char *argv[]) {
     int * counts = calloc((args.size+1)*(args.size+1), sizeof(int));
 
     bam1_t * read = bam_init1();
-    while(sam_read1(file, header, read) >= 0) {
+    if(args.region == NULL || index == NULL){
+
+      /* Warn about slow process times if regions file is specified
+         and index file could not be opened
+      */
+      if(args.region != NULL )
+        fprintf(stderr, "Could not open index file. Falling back to"
+                " reading entire bam file. Index file with 'samtools"
+                " index %s' for faster processing.\n", args.bam);
+    
+      while(sam_read1(file, header, read) >= 0) {
         long x, y;
         x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
         y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
 
         if( x >= 0 && y >= 0) counts[x*args.size + y] ++;
-    }
+      }
+    }else{
 
+      /* loop through region list, setting up bam iterator, reading
+         over only included reads. */
+      region_t* cur = reglist;
+      while(cur != NULL){
+        hts_itr_t* itr = sam_itr_queryi(index, cur->tid,
+                                        cur->pos.beg, cur->pos.end);
+
+        while(sam_itr_next(file, itr, read) >=0){
+          long x, y;
+          x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
+          y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
+          
+          if( x >= 0 && y >= 0) counts[x*args.size + y] ++;
+        }
+
+        sam_itr_destroy(itr);        
+        cur = cur->order;
+      }
+    }
     /* for( i = 0; i < args.size*args.size; i++ ) */
     /*      printf("%d%c", counts[i], " \n"[((i+1)%args.size) == 0]); */
 
