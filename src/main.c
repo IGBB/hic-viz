@@ -292,6 +292,7 @@ int main(int argc, char *argv[]) {
         max=args.max;
     } else {
         max = 2*tot/num;
+        fprintf(stderr, "Maximum value not set. Using %d\n", max);
     }
 
     int padding =  get_padding(reglist, args.font);
