@@ -11,7 +11,7 @@ typedef enum {
 
 typedef struct {
     char * region, *bam, *out, *font;
-    int size;
+    int size, max;
     outtype_t type;
     const int *pal;
 } arguments_t;

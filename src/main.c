@@ -224,6 +224,7 @@ int main(int argc, char *argv[]) {
     arguments_t args = parse_options(argc, argv);
 
     int i;
+    int max;
     long bin_size;
 
     hts_idx_t *index;
@@ -286,8 +287,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* Adjust max color to twice the average of entries > 1 */
-    int max = 2*tot/num;
+    /* Adjust max color to twice the average of entries > 1  if args.max not provided */
+    if (args.max){
+        max=args.max;
+    } else {
+        max = 2*tot/num;
+    }
 
     int padding =  get_padding(reglist, args.font);
     /* Create image and palette */

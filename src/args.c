@@ -14,6 +14,7 @@ const char* const help_message =
   "                         Can be space, tab, or newline delimited\n"
   "  -s, --plot-size INT    Size of contact map in pixels (default: 3000)\n"
   "                         Actual plot will be larger due to sequence names\n"
+  "  -m, --max INT          Count to begin darkest color at (default determined by data)\n"
   "  -p, --palette PALETTE  Palette of contact map (default: rocket)\n"
   "                         Valid options are magma, inferno, mako, rocket, or grey\n"
   "  -h, --help             Give this help list\n"
@@ -24,6 +25,7 @@ static ko_longopt_t longopts[] = {
 
     { "region", ko_required_argument, 'r' },
     { "plot-size", ko_required_argument, 's' },
+    { "max", ko_required_argument, 'm' },
     { "out", ko_required_argument, 'o' },
     { "type", ko_required_argument, 't' },
     { "font", ko_required_argument, 'f' },
@@ -39,6 +41,7 @@ arguments_t parse_options(int argc, char **argv) {
                                 .region = NULL,
                                 .size  = 3000,
                                 .bam = NULL,
+                                .max = 0,
                                 .out = "/dev/stdout",
                                 .font= "/usr/share/fonts/dejavu/DejaVuSans.ttf",
                                 .pal = rocket
@@ -48,12 +51,13 @@ arguments_t parse_options(int argc, char **argv) {
   ketopt_t opt = KETOPT_INIT;
 
   int  c;
-  while ((c = ketopt(&opt, argc, argv, 1, "r:s:f:o:p:t:h", longopts)) >= 0) {
+  while ((c = ketopt(&opt, argc, argv, 1, "r:s:m:f:o:p:t:h", longopts)) >= 0) {
     switch(c){
       case 'o': arguments.out     = opt.arg;       break;
       case 'r': arguments.region  = opt.arg;       break;
       case 'f': arguments.font    = opt.arg;       break;
       case 's': arguments.size    = atoi(opt.arg); break;
+      case 'm': arguments.max     = atoi(opt.arg); break;
       case 't':
         if(strcmp(opt.arg, "png") == 0)
           arguments.type=png;
