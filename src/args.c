@@ -11,12 +11,15 @@ const char* const help_message =
   "  -o, --out FILE         Output file (default: stdout)\n"
   "  -t, --type TYPE        Image format [png,jpeg,tiff,bmp] (default: png)\n"
   "  -r, --region FILE      List of sequences to include (default: all)\n"
-  "                         Can be space, tab, or newline delimited\n"
-  "  -s, --plot-size INT    Size of contact map in pixels (default: 3000)\n"
-  "                         Actual plot will be larger due to sequence names\n"
+  "                             Can be space, tab, or newline delimited\n"
+  "  -b, --bins INT         Number of bins for contact map (default: 3000)\n"
+  "  -s, --scale INT        Scale multiplier for plot (default: 1)\n"
+  "                             Must be greater than or equal to 1\n"
+  "                             Actual plot will be larger than (bins * scale)\n"
+  "                                 due to sequence names\n"
   "  -m, --max INT          Count to begin darkest color at (default determined by data)\n"
   "  -p, --palette PALETTE  Palette of contact map (default: rocket)\n"
-  "                         Valid options are magma, inferno, mako, rocket, or grey\n"
+  "                             Valid options are magma, inferno, mako, rocket, or grey\n"
   "  -h, --help             Give this help list\n"
   "Report bugs to github.com/IGBB/hic-viz.\n";
 
@@ -24,7 +27,8 @@ const char* const help_message =
 static ko_longopt_t longopts[] = {
 
     { "region", ko_required_argument, 'r' },
-    { "plot-size", ko_required_argument, 's' },
+    { "bins", ko_required_argument, 'b' },
+    { "scale", ko_required_argument, 's' },
     { "max", ko_required_argument, 'm' },
     { "out", ko_required_argument, 'o' },
     { "type", ko_required_argument, 't' },
@@ -38,26 +42,28 @@ static ko_longopt_t longopts[] = {
 
 arguments_t parse_options(int argc, char **argv) {
   arguments_t arguments = {
-                                .region = NULL,
-                                .size  = 3000,
-                                .bam = NULL,
-                                .max = 0,
-                                .out = "/dev/stdout",
-                                .font= "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                                .pal = rocket
+                                .region   = NULL,
+                                .bins     = 3000,
+                                .scale = 1,
+                                .bam      = NULL,
+                                .max      = 0,
+                                .out      = "/dev/stdout",
+                                .font     = "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                                .pal      = rocket
   };
 
 
   ketopt_t opt = KETOPT_INIT;
 
   int  c;
-  while ((c = ketopt(&opt, argc, argv, 1, "r:s:m:f:o:p:t:h", longopts)) >= 0) {
+  while ((c = ketopt(&opt, argc, argv, 1, "r:b:s:m:f:o:p:t:h", longopts)) >= 0) {
     switch(c){
-      case 'o': arguments.out     = opt.arg;       break;
-      case 'r': arguments.region  = opt.arg;       break;
-      case 'f': arguments.font    = opt.arg;       break;
-      case 's': arguments.size    = atoi(opt.arg); break;
-      case 'm': arguments.max     = atoi(opt.arg); break;
+      case 'o': arguments.out    = opt.arg;       break;
+      case 'r': arguments.region = opt.arg;       break;
+      case 'f': arguments.font   = opt.arg;       break;
+      case 'b': arguments.bins   = atoi(opt.arg); break;
+      case 's': arguments.scale  = atoi(opt.arg); break;
+      case 'm': arguments.max    = atoi(opt.arg); break;
       case 't':
         if(strcmp(opt.arg, "png") == 0)
           arguments.type=png;
@@ -105,5 +111,21 @@ arguments_t parse_options(int argc, char **argv) {
           exit(EXIT_FAILURE);
   }
 
+  if(arguments.scale < 1){
+    fprintf(stderr, "Scale must be greater than or equal to one\n");
+    fprintf(stderr, help_message);
+    exit(EXIT_FAILURE);      
+  }
+
+  if(arguments.scale > 100){
+    fprintf(stderr, "Size is no longer a command-line argument. "
+            "Modified the given arguments to %d bins (-b) with a scale"
+            "(-s) of 1.\n", arguments.scale);
+    fprintf(stderr, help_message);
+    
+    arguments.bins = arguments.scale;
+    arguments.scale = 1;
+  }
+  
   return arguments;
 }

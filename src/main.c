@@ -232,8 +232,8 @@ int main(int argc, char *argv[]) {
     bam_hdr_t *header = sam_hdr_read(file);
 
     region_t* reglist = get_reglist(header, args.region);
-    region_t** pages = create_pages(header, reglist, args.size, &bin_size);
-    int * counts = calloc((args.size+1)*(args.size+1), sizeof(int));
+    region_t** pages = create_pages(header, reglist, args.bins, &bin_size);
+    int * counts = calloc((args.bins+1)*(args.bins+1), sizeof(int));
 
     bam1_t * read = bam_init1();
     if(args.region == NULL || index == NULL){
@@ -251,7 +251,7 @@ int main(int argc, char *argv[]) {
         x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
         y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
 
-        if( x >= 0 && y >= 0) counts[x*args.size + y] ++;
+        if( x >= 0 && y >= 0) counts[x*args.bins + y] ++;
       }
     }else{
 
@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
           x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
           y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
           
-          if( x >= 0 && y >= 0) counts[x*args.size + y] ++;
+          if( x >= 0 && y >= 0) counts[x*args.bins + y] ++;
         }
 
         sam_itr_destroy(itr);        
@@ -280,7 +280,7 @@ int main(int argc, char *argv[]) {
     /* Get number and total counts of entries greater than 1 */
     int num=0;
     long tot = 0;
-    for( i = 0; i < args.size*args.size; i++ ){
+    for( i = 0; i < args.bins*args.bins; i++ ){
         if(counts[i] > 1){
             num++;
             tot += counts[i];
@@ -296,46 +296,56 @@ int main(int argc, char *argv[]) {
     }
 
     int padding =  get_padding(reglist, args.font);
+    int plotsize = args.bins * args.scale;
     /* Create image and palette */
-    gdImagePtr img = gdImageCreate(args.size+padding, args.size+padding);
+    gdImagePtr img = gdImageCreate(plotsize+padding, plotsize+padding);
     int * colors = load_palette(img, args.pal);
 
     /* Draw contact map */
-    for( i = 0; i < args.size*args.size; i++ ){
+    for( i = 0; i < args.bins*args.bins; i++ ){
         int color = 255L*counts[i]/max;
         if(color > 255) color=255;
         color=colors[color];
 
-        gdImageSetPixel(img, i/args.size, i%args.size, color);
+        int x = (i/args.bins)* args.scale;
+        int y = (i%args.bins)* args.scale;
+        
+        gdImageFilledRectangle(img, x, y,
+                               x+args.scale,
+                               y+args.scale,
+                               color);
     }
 
 
     /* Draw lines and labels, skipping if too close (10px) */
-    int line_color = gdImageColorClosest(img, 128,128,128);
+    int line_color = gdImageColorClosest(img, 180,180,180);
+    int font_color = gdImageColorClosest(img, 128,128,128);
     region_t* cur = reglist;
     while(cur != NULL){
-        int beg, end;
-        if(cur->dir == 1){
-            beg = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
-            end = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
-        }else{
-            beg = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
-            end = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
+        int beg = pos2bin(pages[cur->tid], cur->pos.beg, bin_size);
+        int end = pos2bin(pages[cur->tid], cur->pos.end-1, bin_size);
+        if(cur->dir != 1){
+          int tmp = end;
+          end = beg;
+          beg = tmp;
         }
 
-        if(end - beg <= 10 ) goto NEXT;
+        beg *= args.scale;
+        end *= args.scale;
+        
+        gdImageLine( img, beg, 0, beg, plotsize+10, line_color );
+        gdImageLine( img, 0, beg, plotsize+10, beg, line_color );
 
-        gdImageLine( img, beg, 0, beg, args.size, line_color );
-        gdImageLine( img, 0, beg, args.size, beg, line_color );
+        if(end - beg <= 10 ) goto NEXT;
 
         const char * name = cur->str;
 
         int brect[8];
-        gdImageStringFT(img, brect, line_color, args.font,
-                        24,0 , args.size+5, (beg+end)/2,
+        gdImageStringFT(img, brect, font_color, args.font,
+                        24,0 , plotsize+5, (beg+end)/2,
                         name);
-        gdImageStringFT(img, brect, line_color, args.font,
-                        24, -1.57, (beg+end)/2, args.size+5,
+        gdImageStringFT(img, brect, font_color, args.font,
+                        24, -1.57, (beg+end)/2, plotsize+5,
                         name);
     NEXT:
         cur = cur->order;
