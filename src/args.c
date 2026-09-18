@@ -8,6 +8,7 @@
 const char* const help_message =
   "Usage: hic-viz [OPTION...] <BAM>\n"
   "hic-viz -- Simple hi-c contact plotting\n\n"
+  "  -a, --agp FILE         A Golden Path scaffolding file \n"
   "  -o, --out FILE         Output file (default: stdout)\n"
   "  -t, --type TYPE        Image format [png,jpeg,tiff,bmp] (default: png)\n"
   "  -r, --region FILE      List of sequences to include (default: all)\n"
@@ -27,6 +28,7 @@ const char* const help_message =
 static ko_longopt_t longopts[] = {
 
     { "region", ko_required_argument, 'r' },
+    { "agp", ko_required_argument, 'a' },
     { "bins", ko_required_argument, 'b' },
     { "scale", ko_required_argument, 's' },
     { "max", ko_required_argument, 'm' },
@@ -43,12 +45,13 @@ static ko_longopt_t longopts[] = {
 arguments_t parse_options(int argc, char **argv) {
   arguments_t arguments = {
                                 .region   = NULL,
+                                .agp   = NULL,
                                 .bins     = 3000,
                                 .scale = 1,
                                 .bam      = NULL,
                                 .max      = 0,
                                 .out      = "/dev/stdout",
-                                .font     = "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                                .font     = "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
                                 .pal      = rocket
   };
 
@@ -56,9 +59,10 @@ arguments_t parse_options(int argc, char **argv) {
   ketopt_t opt = KETOPT_INIT;
 
   int  c;
-  while ((c = ketopt(&opt, argc, argv, 1, "r:b:s:m:f:o:p:t:h", longopts)) >= 0) {
+  while ((c = ketopt(&opt, argc, argv, 1, "r:a:b:s:m:f:o:p:t:h", longopts)) >= 0) {
     switch(c){
       case 'o': arguments.out    = opt.arg;       break;
+      case 'a': arguments.agp    = opt.arg;       break;
       case 'r': arguments.region = opt.arg;       break;
       case 'f': arguments.font   = opt.arg;       break;
       case 'b': arguments.bins   = atoi(opt.arg); break;

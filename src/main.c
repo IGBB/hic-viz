@@ -247,6 +247,10 @@ int main(int argc, char *argv[]) {
                 " index %s' for faster processing.\n", args.bam);
     
       while(sam_read1(file, header, read) >= 0) {
+        if(read->core.flag & (BAM_FUNMAP | BAM_FMUNMAP) ||
+           read->core.mtid < 0)
+            continue;
+        
         long x, y;
         x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
         y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
@@ -263,11 +267,15 @@ int main(int argc, char *argv[]) {
                                         cur->pos.beg, cur->pos.end);
 
         while(sam_itr_next(file, itr, read) >=0){
-          long x, y;
-          x = pos2bin(pages[read->core.tid],  read->core.pos,  bin_size);
-          y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
-          
-          if( x >= 0 && y >= 0) counts[x*args.bins + y] ++;
+            if (read->core.flag & (BAM_FUNMAP | BAM_FMUNMAP) ||
+                read->core.mtid < 0)
+              continue;
+            long x, y;
+            x = pos2bin(pages[read->core.tid], read->core.pos, bin_size);
+            y = pos2bin(pages[read->core.mtid], read->core.mpos, bin_size);
+
+            if (x >= 0 && y >= 0)
+              counts[x * args.bins + y]++;
         }
 
         sam_itr_destroy(itr);        
